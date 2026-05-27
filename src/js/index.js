@@ -14,6 +14,7 @@
     var showPubKey = true;
     var showPrivKey = true;
     var showQr = false;
+    var qrEnabled = true;
     var litecoinUseLtub = true;
 
     var entropyTypeAutoDetect = true;
@@ -26,6 +27,7 @@
 
     var DOM = {};
     DOM.privacyScreenToggle = $(".privacy-screen-toggle");
+    DOM.qrToggle = $(".qr-toggle");
     DOM.network = $(".network");
     DOM.bip32Client = $("#bip32-client");
     DOM.phraseNetwork = $("#network-phrase");
@@ -143,6 +145,7 @@
     function init() {
         // Events
         DOM.privacyScreenToggle.on("change", privacyScreenToggled);
+        DOM.qrToggle.on("change", qrToggled);
         DOM.generatedStrength.on("change", generatedStrengthChanged);
         DOM.network.on("change", networkChanged);
         DOM.bip32Client.on("change", bip32ClientChanged);
@@ -1171,22 +1174,36 @@
 
     function displayAddresses(start, total) {
         generationProcesses.push(new (function () {
-
-            var rows = [];
+            var active = true;
+            var currentIndex = 0;
+            var BATCH_SIZE = 20;
 
             this.stop = function () {
-                for (var i = 0; i < rows.length; i++) {
-                    rows[i].shouldGenerate = false;
-                }
+                active = false;
                 hidePending();
             }
 
-            for (var i = 0; i < total; i++) {
-                var index = i + start;
-                var isLast = i == total - 1;
-                rows.push(new TableRow(index, isLast));
+            function processBatch() {
+                if (!active) {
+                    return;
+                }
+                
+                for (var i = 0; i < BATCH_SIZE; i++) {
+                    if (currentIndex >= total) {
+                        break;
+                    }
+                    var index = start + currentIndex;
+                    var isLast = currentIndex == total - 1;
+                    new TableRow(index, isLast);
+                    currentIndex++;
+                }
+
+                if (currentIndex < total) {
+                    setTimeout(processBatch, 0);
+                }
             }
 
+            processBatch();
         })());
     }
 
@@ -1215,7 +1232,8 @@
     function TableRow(index, isLast) {
 
         var self = this;
-        this.shouldGenerate = true;
+        // this.shouldGenerate = true;
+
         var useHardenedAddresses = DOM.hardenedAddresses.prop("checked");
         var useBip38 = DOM.useBip38.prop("checked");
         var bip38password = DOM.bip38Password.val();
@@ -1231,10 +1249,11 @@
         }
 
         function calculateValues() {
-            setTimeout(function () {
-                if (!self.shouldGenerate) {
-                    return;
-                }
+            // setTimeout(function () {
+            //     if (!self.shouldGenerate) {
+            //         return;
+            //     }
+
                 // derive HDkey for this row of the table
                 var key = "NA";
                 if (useHardenedAddresses) {
@@ -1379,9 +1398,8 @@
                     var path = "m/" + purpose + "'/" + coin + "'/" + account + "'/" + change + "'/" + index + "'";
                     var keypair = libs.aptosUtil.getKeypair(path, seed);
                     indexText = path;
-                    // Aptos private key: 64 bytes (32-byte private key + 32-byte public key) encoded as hex
-                    var fullSecretKey = libs.buffer.Buffer.concat([keypair.privateKey, keypair.publicKey]);
-                    privkey = "0x" + fullSecretKey.toString('hex');
+                    // Aptos private key: 32-byte private key encoded as hex
+                    privkey = keypair.privateKey.toString('hex');
                     pubkey = "0x" + keypair.publicKey.toString('hex');
                     address = libs.aptosUtil.getAddress(keypair.publicKey);
                 }
@@ -1396,9 +1414,8 @@
                     var path = "m/" + purpose + "'/" + coin + "'/" + account + "'/" + change + "'/" + index + "'";
                     var keypair = libs.suiUtil.getKeypair(path, seed);
                     indexText = path;
-                    // Sui private key: 64 bytes (32-byte private key + 32-byte public key) encoded as hex
-                    var fullSecretKey = libs.buffer.Buffer.concat([keypair.privateKey, keypair.publicKey]);
-                    privkey = "0x" + fullSecretKey.toString('hex');
+                    // Sui private key: 32-byte private key encoded as hex
+                    privkey = keypair.privateKey.toString('hex');
                     pubkey = "0x" + keypair.publicKey.toString('hex');
                     address = libs.suiUtil.getAddress(keypair.publicKey);
                 }
@@ -1591,7 +1608,8 @@
                     hidePending();
                     updateCsv();
                 }
-            }, 50)
+            // }, 50)
+
         }
 
         init();
@@ -2112,6 +2130,9 @@
     }
 
     function createQr(e) {
+        if (!qrEnabled) {
+            return;
+        }
         var content = e.target.textContent || e.target.value;
         if (content) {
             var qrEl = libs.kjua({
@@ -2137,9 +2158,22 @@
     }
 
     function toggleQr() {
+        if (!qrEnabled) {
+            return;
+        }
         showQr = !showQr;
         DOM.qrHider.toggleClass("hidden");
         DOM.qrHint.toggleClass("hidden");
+    }
+
+    function qrToggled() {
+        qrEnabled = DOM.qrToggle.prop("checked");
+        if (!qrEnabled) {
+            showQr = false;
+            destroyQr();
+            DOM.qrHider.addClass("hidden");
+            DOM.qrHint.removeClass("hidden");
+        }
     }
 
     function bip44TabSelected() {
