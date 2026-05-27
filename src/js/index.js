@@ -70,6 +70,7 @@
     DOM.bip44tab = $("#bip44-tab");
     DOM.bip49tab = $("#bip49-tab");
     DOM.bip84tab = $("#bip84-tab");
+    DOM.bip86tab = $("#bip86-tab");
     DOM.bip141tab = $("#bip141-tab");
     DOM.bip32panel = $("#bip32");
     DOM.bip44panel = $("#bip44");
@@ -100,6 +101,15 @@
     DOM.bip84accountXprv = $("#bip84 .account-xprv");
     DOM.bip84accountXpub = $("#bip84 .account-xpub");
     DOM.bip84change = $("#bip84 .change");
+    DOM.bip86unavailable = $("#bip86 .unavailable");
+    DOM.bip86available = $("#bip86 .available");
+    DOM.bip86path = $("#bip86-path");
+    DOM.bip86purpose = $("#bip86 .purpose");
+    DOM.bip86coin = $("#bip86 .coin");
+    DOM.bip86account = $("#bip86 .account");
+    DOM.bip86accountXprv = $("#bip86 .account-xprv");
+    DOM.bip86accountXpub = $("#bip86 .account-xpub");
+    DOM.bip86change = $("#bip86 .change");
     DOM.bip85 = $('.bip85');
     DOM.showBip85 = $('.showBip85');
     DOM.bip85Field = $('.bip85Field');
@@ -121,6 +131,8 @@
     DOM.hardenedAddresses = $(".hardened-addresses");
     DOM.bitcoinCashAddressTypeContainer = $(".bch-addr-type-container");
     DOM.bitcoinCashAddressType = $("[name=bch-addr-type]")
+    DOM.bitcoinAddressTypeContainer = $(".bitcoin-address-type-container");
+    DOM.bitcoinAddressType = $(".bitcoin-address-type");
     DOM.useBip38 = $(".use-bip38");
     DOM.bip38Password = $(".bip38-password");
     DOM.addresses = $(".addresses");
@@ -172,6 +184,8 @@
         DOM.bip49change.on("input", calcForDerivationPath);
         DOM.bip84account.on("input", calcForDerivationPath);
         DOM.bip84change.on("input", calcForDerivationPath);
+        DOM.bip86account.on("input", calcForDerivationPath);
+        DOM.bip86change.on("input", calcForDerivationPath);
         DOM.bip85application.on('input', calcBip85);
         DOM.bip85mnemonicLanguage.on('change', calcBip85);
         DOM.bip85mnemonicLength.on('change', calcBip85);
@@ -190,12 +204,14 @@
         DOM.csvTab.on("click", updateCsv);
         DOM.languages.on("click", languageChanged);
         DOM.bitcoinCashAddressType.on("change", bitcoinCashAddressTypeChange);
+        DOM.bitcoinAddressType.on("change", bitcoinAddressTypeChanged);
         setQrEvents(DOM.showQrEls);
         disableForms();
         hidePending();
         hideValidationError();
         populateNetworkSelect();
         populateClientSelect();
+        setBitcoinAddressTypeVisibility();
     }
 
     // Event handlers
@@ -218,6 +234,7 @@
         var networkIndex = e.target.value;
         var network = networks[networkIndex];
         network.onSelect();
+        setBitcoinAddressTypeVisibility();
         adjustNetworkForSegwit();
         if (seed != null) {
             seedChanged()
@@ -237,6 +254,75 @@
             clients[clientIndex].onSelect();
             rootKeyChanged();
         }
+    }
+
+    function bitcoinAddressTypeChanged() {
+        var addressType = DOM.bitcoinAddressType.val();
+        if (addressType == "legacy") {
+            selectDerivationTab(DOM.bip44tab);
+        }
+        else if (addressType == "nested-segwit") {
+            selectDerivationTab(DOM.bip49tab);
+        }
+        else if (addressType == "native-segwit") {
+            selectDerivationTab(DOM.bip84tab);
+        }
+        else if (addressType == "taproot") {
+            selectDerivationTab(DOM.bip86tab);
+        }
+        else if (addressType == "advanced-segwit") {
+            selectDerivationTab(DOM.bip141tab);
+        }
+    }
+
+    function selectDerivationTab(tab) {
+        if (tab.hasClass("active")) {
+            tabChanged();
+        }
+        else {
+            tab.find("a").tab("show");
+        }
+    }
+
+    function setBitcoinAddressTypeVisibility() {
+        if (isBitcoinNetworkSelected()) {
+            DOM.bitcoinAddressTypeContainer.removeClass("hidden");
+            syncBitcoinAddressTypeFromTab();
+        }
+        else {
+            DOM.bitcoinAddressTypeContainer.addClass("hidden");
+        }
+    }
+
+    function syncBitcoinAddressTypeFromTab() {
+        if (!DOM.bitcoinAddressType || DOM.bitcoinAddressType.length == 0) {
+            return;
+        }
+        if (bip44TabSelected()) {
+            DOM.bitcoinAddressType.val("legacy");
+        }
+        else if (bip49TabSelected()) {
+            DOM.bitcoinAddressType.val("nested-segwit");
+        }
+        else if (bip84TabSelected()) {
+            DOM.bitcoinAddressType.val("native-segwit");
+        }
+        else if (bip86TabSelected()) {
+            DOM.bitcoinAddressType.val("taproot");
+        }
+        else if (bip141TabSelected()) {
+            DOM.bitcoinAddressType.val("advanced-segwit");
+        }
+    }
+
+    function isBitcoinNetworkSelected() {
+        var selectedNetwork = networks[DOM.network.val()];
+        if (!selectedNetwork) {
+            return false;
+        }
+        return selectedNetwork.name == "BTC - Bitcoin" ||
+            selectedNetwork.name == "BTC - Bitcoin Testnet" ||
+            selectedNetwork.name == "BTC - Bitcoin RegTest";
     }
 
     function isUsingAutoCompute() {
@@ -310,6 +396,7 @@
 
     function tabChanged() {
         showPending();
+        syncBitcoinAddressTypeFromTab();
         adjustNetworkForSegwit();
         var phrase = DOM.phrase.val();
         var seed = DOM.seed.val();
@@ -602,6 +689,9 @@
         }
         else if (bip84TabSelected()) {
             displayBip84Info();
+        }
+        else if (bip86TabSelected()) {
+            displayBip86Info();
         }
         displayBip32Info();
     }
@@ -1018,6 +1108,21 @@
             console.log("Using derivation path from BIP84 tab: " + derivationPath);
             return derivationPath;
         }
+        else if (bip86TabSelected()) {
+            var purpose = parseIntNoNaN(DOM.bip86purpose.val(), 86);
+            var coin = parseIntNoNaN(DOM.bip86coin.val(), 0);
+            var account = parseIntNoNaN(DOM.bip86account.val(), 0);
+            var change = parseIntNoNaN(DOM.bip86change.val(), 0);
+            var path = "m/";
+            path += purpose + "'/";
+            path += coin + "'/";
+            path += account + "'/";
+            path += change;
+            DOM.bip86path.val(path);
+            var derivationPath = DOM.bip86path.val();
+            console.log("Using derivation path from BIP86 tab: " + derivationPath);
+            return derivationPath;
+        }
         else if (bip32TabSelected()) {
             var derivationPath = DOM.bip32path.val();
             console.log("Using derivation path from BIP32 tab: " + derivationPath);
@@ -1149,6 +1254,24 @@
         DOM.bip84accountXpub.val(accountXpub);
     }
 
+    function displayBip86Info() {
+        // Get the derivation path for the account
+        var purpose = parseIntNoNaN(DOM.bip86purpose.val(), 86);
+        var coin = parseIntNoNaN(DOM.bip86coin.val(), 0);
+        var account = parseIntNoNaN(DOM.bip86account.val(), 0);
+        var path = "m/";
+        path += purpose + "'/";
+        path += coin + "'/";
+        path += account + "'/";
+        // Calculate the account extended keys
+        var accountExtendedKey = calcBip32ExtendedKey(path);
+        var accountXprv = accountExtendedKey.toBase58();
+        var accountXpub = accountExtendedKey.neutered().toBase58();
+        // Display the extended keys
+        DOM.bip86accountXprv.val(accountXprv);
+        DOM.bip86accountXpub.val(accountXpub);
+    }
+
     function displayBip32Info() {
         // Display the key
         DOM.seed.val(seed);
@@ -1208,7 +1331,7 @@
     }
 
     function segwitSelected() {
-        return bip49TabSelected() || bip84TabSelected() || bip141TabSelected();
+        return bip49TabSelected() || bip84TabSelected() || bip86TabSelected() || bip141TabSelected();
     }
 
     function p2wpkhSelected() {
@@ -1229,6 +1352,117 @@
         return (bip141TabSelected() && DOM.bip141semantics.val() == "p2wsh-p2sh");
     }
 
+    function p2trSelected() {
+        return bip86TabSelected();
+    }
+
+    function calcTaprootAddress(keyPair, network) {
+        var outputKey = calcTaprootOutputKey(keyPair);
+        return encodeBech32mSegwitAddress(network.bech32, 1, outputKey);
+    }
+
+    function calcTaprootOutputKey(keyPair) {
+        var internalPoint = keyPair.Q;
+        if (!internalPoint.affineY.isEven()) {
+            internalPoint = internalPoint.negate();
+        }
+        var internalKey = internalPoint.affineX.toBuffer(32);
+        var tweakHash = taggedHash("TapTweak", internalKey);
+        var BigInteger = keyPair.d ? keyPair.d.constructor : internalPoint.affineX.constructor;
+        var tweak = BigInteger.fromBuffer(tweakHash);
+        if (tweak.compareTo(internalPoint.curve.n) >= 0) {
+            throw new Error("Invalid Taproot tweak");
+        }
+        var outputPoint = internalPoint.add(internalPoint.curve.G.multiply(tweak));
+        if (outputPoint.infinity) {
+            throw new Error("Invalid Taproot output key");
+        }
+        return outputPoint.affineX.toBuffer(32);
+    }
+
+    function taggedHash(tag, data) {
+        var tagHash = libs.bitcoin.crypto.sha256(libs.buffer.Buffer.from(tag, "utf8"));
+        return libs.bitcoin.crypto.sha256(libs.buffer.Buffer.concat([tagHash, tagHash, data]));
+    }
+
+    function encodeBech32mSegwitAddress(hrp, version, program) {
+        var data = [version].concat(convertBits(program, 8, 5, true));
+        var combined = data.concat(createBech32mChecksum(hrp, data));
+        var chars = "qpzry9x8gf2tvdw0s3jn54khce6mua7l";
+        var address = hrp + "1";
+        for (var i = 0; i < combined.length; i++) {
+            address += chars.charAt(combined[i]);
+        }
+        return address;
+    }
+
+    function createBech32mChecksum(hrp, data) {
+        var values = bech32HrpExpand(hrp).concat(data);
+        var polymod = bech32Polymod(values.concat([0, 0, 0, 0, 0, 0])) ^ 0x2bc830a3;
+        var checksum = [];
+        for (var i = 0; i < 6; i++) {
+            checksum.push((polymod >> 5 * (5 - i)) & 31);
+        }
+        return checksum;
+    }
+
+    function bech32HrpExpand(hrp) {
+        var result = [];
+        var i;
+        for (i = 0; i < hrp.length; i++) {
+            result.push(hrp.charCodeAt(i) >> 5);
+        }
+        result.push(0);
+        for (i = 0; i < hrp.length; i++) {
+            result.push(hrp.charCodeAt(i) & 31);
+        }
+        return result;
+    }
+
+    function bech32Polymod(values) {
+        var generators = [0x3b6a57b2, 0x26508e6d, 0x1ea119fa, 0x3d4233dd, 0x2a1462b3];
+        var chk = 1;
+        for (var i = 0; i < values.length; i++) {
+            var top = chk >> 25;
+            chk = ((chk & 0x1ffffff) << 5) ^ values[i];
+            for (var j = 0; j < 5; j++) {
+                if ((top >> j) & 1) {
+                    chk ^= generators[j];
+                }
+            }
+        }
+        return chk;
+    }
+
+    function convertBits(data, fromBits, toBits, pad) {
+        var acc = 0;
+        var bits = 0;
+        var ret = [];
+        var maxv = (1 << toBits) - 1;
+        var maxAcc = (1 << (fromBits + toBits - 1)) - 1;
+        for (var i = 0; i < data.length; i++) {
+            var value = data[i];
+            if (value < 0 || (value >> fromBits) !== 0) {
+                throw new Error("Invalid value while converting bits");
+            }
+            acc = ((acc << fromBits) | value) & maxAcc;
+            bits += fromBits;
+            while (bits >= toBits) {
+                bits -= toBits;
+                ret.push((acc >> bits) & maxv);
+            }
+        }
+        if (pad) {
+            if (bits > 0) {
+                ret.push((acc << (toBits - bits)) & maxv);
+            }
+        }
+        else if (bits >= fromBits || ((acc << (toBits - bits)) & maxv)) {
+            throw new Error("Invalid padding while converting bits");
+        }
+        return ret;
+    }
+
     function TableRow(index, isLast) {
 
         var self = this;
@@ -1243,6 +1477,7 @@
         var isP2wpkhInP2sh = p2wpkhInP2shSelected();
         var isP2wsh = p2wshSelected();
         var isP2wshInP2sh = p2wshInP2shSelected();
+        var isP2tr = p2trSelected();
 
         function init() {
             calculateValues();
@@ -1520,6 +1755,9 @@
                         var redeemScript = libs.bitcoin.script.witnessScriptHash.output.encode(libs.bitcoin.crypto.sha256(witnessScript));
                         var scriptPubKey = libs.bitcoin.script.scriptHash.output.encode(libs.bitcoin.crypto.hash160(redeemScript));
                         address = libs.bitcoin.address.fromOutputScript(scriptPubKey, network)
+                    }
+                    else if (isP2tr) {
+                        address = calcTaprootAddress(keyPair, network);
                     }
                 }
 
@@ -2215,6 +2453,10 @@
         if ("baseNetwork" in network) {
             n = libs.bitcoin.networks[network.baseNetwork];
         }
+        // Taproot only needs the base network's bech32 HRP.
+        if (p2trSelected()) {
+            return "bech32" in n;
+        }
         // check if only p2wpkh params are required
         if (p2wpkhSelected()) {
             return "p2wpkh" in n;
@@ -2235,6 +2477,10 @@
         return DOM.bip84tab.hasClass("active");
     }
 
+    function bip86TabSelected() {
+        return DOM.bip86tab.hasClass("active");
+    }
+
     function bip141TabSelected() {
         return DOM.bip141tab.hasClass("active");
     }
@@ -2243,6 +2489,7 @@
         DOM.bip44coin.val(coinValue);
         DOM.bip49coin.val(coinValue);
         DOM.bip84coin.val(coinValue);
+        DOM.bip86coin.val(coinValue);
     }
 
     function showSegwitAvailable() {
@@ -2250,6 +2497,8 @@
         DOM.bip49available.removeClass("hidden");
         DOM.bip84unavailable.addClass("hidden");
         DOM.bip84available.removeClass("hidden");
+        DOM.bip86unavailable.addClass("hidden");
+        DOM.bip86available.removeClass("hidden");
         DOM.bip141unavailable.addClass("hidden");
         DOM.bip141available.removeClass("hidden");
     }
@@ -2259,6 +2508,8 @@
         DOM.bip49unavailable.removeClass("hidden");
         DOM.bip84available.addClass("hidden");
         DOM.bip84unavailable.removeClass("hidden");
+        DOM.bip86available.addClass("hidden");
+        DOM.bip86unavailable.removeClass("hidden");
         DOM.bip141available.addClass("hidden");
         DOM.bip141unavailable.removeClass("hidden");
     }
@@ -2277,6 +2528,9 @@
         // choose the right segwit params
         if (p2wpkhSelected() && "p2wpkh" in network) {
             network = network.p2wpkh;
+        }
+        else if (p2trSelected()) {
+            return;
         }
         else if (p2wpkhInP2shSelected() && "p2wpkhInP2sh" in network) {
             network = network.p2wpkhInP2sh;
